@@ -11,6 +11,7 @@ from utils import (
     SUPPORTED_JD_FORMATS,
     SUPPORTED_RESUME_FORMATS,
     analyze_resume_against_jd,
+    answer_general_query,
     extract_jd_text,
     extract_resume_text,
     generated_output_dir,
@@ -59,6 +60,41 @@ def set_waiting_state(
 ) -> None:
     context.user_data["awaiting_jd"] = jd
     context.user_data["awaiting_resume"] = resume
+
+
+def looks_like_general_query(message_text: str) -> bool:
+    lowered = message_text.strip().lower()
+    if not lowered:
+        return False
+
+    question_starters = (
+        "what",
+        "which",
+        "who",
+        "where",
+        "when",
+        "why",
+        "how",
+        "can",
+        "could",
+        "should",
+        "would",
+        "do",
+        "does",
+        "is",
+        "are",
+        "am",
+        "will",
+        "suggest",
+        "recommend",
+        "tell me",
+        "help me",
+    )
+    if lowered.endswith("?"):
+        return True
+    if any(lowered.startswith(starter) for starter in question_starters):
+        return len(lowered) <= 400
+    return False
 
 
 async def post_init(application: Application) -> None:
@@ -142,16 +178,40 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await process_resume_text(update, context, message_text, "pasted text")
         return
 
+    if context.user_data.get("resume_text") or context.user_data.get("last_analysis"):
+        reply = await asyncio.to_thread(
+            answer_general_query,
+            message_text,
+            context.user_data.get("jd_text"),
+            context.user_data.get("resume_text"),
+            context.user_data.get("last_analysis"),
+        )
+        await update.message.reply_text(reply)
+        return
+
+    if looks_like_general_query(message_text):
+        reply = await asyncio.to_thread(
+            answer_general_query,
+            message_text,
+            context.user_data.get("jd_text"),
+            context.user_data.get("resume_text"),
+            context.user_data.get("last_analysis"),
+        )
+        await update.message.reply_text(reply)
+        return
+
     if not context.user_data.get("jd_text"):
         await update.message.reply_text(
             "I need the JD first.\n"
-            "Please use /jd before sending the resume."
+            "Please use /jd before sending the resume.\n"
+            "You can also ask me general career questions in normal chat."
         )
         return
 
     await update.message.reply_text(
         "JD is already attached.\n"
-        "Send /resume when you are ready to upload or paste the resume."
+        "Send /resume when you are ready to upload or paste the resume.\n"
+        "You can also ask me general career questions here."
     )
 
 

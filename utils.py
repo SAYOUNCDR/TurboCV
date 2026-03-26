@@ -187,6 +187,18 @@ def analyze_resume_against_jd(jd_text: str, resume_text: str, chat_id: int) -> d
     return analysis
 
 
+def answer_general_query(
+    query: str,
+    jd_text: str | None = None,
+    resume_text: str | None = None,
+    last_analysis: dict[str, Any] | None = None,
+) -> str:
+    response = _answer_general_query_with_ai(query, jd_text, resume_text, last_analysis)
+    if response:
+        return response
+    return _answer_general_query_locally(query, jd_text, resume_text, last_analysis)
+
+
 def _extract_pdf_text(path: Path) -> str:
     parts: list[str] = []
     with pdfplumber.open(path) as pdf:
@@ -246,6 +258,29 @@ def _extract_text_from_image(path: Path) -> str:
     return text
 
 
+def _answer_general_query_with_ai(
+    query: str,
+    jd_text: str | None,
+    resume_text: str | None,
+    last_analysis: dict[str, Any] | None,
+) -> str | None:
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key and Groq is not None:
+        try:
+            return _chat_with_groq(query, jd_text, resume_text, last_analysis, groq_key)
+        except Exception:
+            pass
+
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key and genai is not None:
+        try:
+            return _chat_with_gemini(query, jd_text, resume_text, last_analysis, gemini_key)
+        except Exception:
+            pass
+
+    return None
+
+
 def _analyze_with_ai(jd_text: str, resume_text: str) -> dict[str, Any] | None:
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key and Groq is not None:
@@ -292,6 +327,80 @@ def _analyze_with_gemini(jd_text: str, resume_text: str, api_key: str) -> dict[s
     response = model.generate_content(_analysis_prompt(jd_text, resume_text))
     content = getattr(response, "text", "")
     return _normalize_ai_payload(_parse_json_payload(content))
+
+
+def _chat_with_groq(
+    query: str,
+    jd_text: str | None,
+    resume_text: str | None,
+    last_analysis: dict[str, Any] | None,
+    api_key: str,
+) -> str:
+    client = Groq(api_key=api_key)
+    response = client.chat.completions.create(
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        temperature=0.4,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are TurboCV, a helpful career assistant inside a Telegram bot. "
+                    "Answer clearly and briefly. If resume or JD context is provided, use it. "
+                    "Do not invent personal facts not present in the context."
+                ),
+            },
+            {"role": "user", "content": _general_chat_prompt(query, jd_text, resume_text, last_analysis)},
+        ],
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+def _chat_with_gemini(
+    query: str,
+    jd_text: str | None,
+    resume_text: str | None,
+    last_analysis: dict[str, Any] | None,
+    api_key: str,
+) -> str:
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(os.getenv("GEMINI_TEXT_MODEL", "gemini-1.5-flash"))
+    response = model.generate_content(_general_chat_prompt(query, jd_text, resume_text, last_analysis))
+    return getattr(response, "text", "").strip()
+
+
+def _general_chat_prompt(
+    query: str,
+    jd_text: str | None,
+    resume_text: str | None,
+    last_analysis: dict[str, Any] | None,
+) -> str:
+    score = ""
+    if last_analysis:
+        score = (
+            f"Last known analysis score: {last_analysis.get('score', 'unknown')} / 10\n"
+            f"Alignment: {last_analysis.get('alignment_label', 'unknown')}\n"
+            f"Summary: {last_analysis.get('summary', '')}\n"
+        )
+
+    jd_snippet = (jd_text or "")[:1800]
+    resume_snippet = (resume_text or "")[:1800]
+    return f"""
+Answer the user's career or resume question as TurboCV.
+Be concise, practical, and supportive.
+If useful, refer to the available JD, resume, or prior analysis context.
+If context is missing, answer generally and say what extra input would improve the answer.
+
+User question:
+{query}
+
+Context:
+{score}
+Job Description:
+{jd_snippet or "Not available"}
+
+Resume:
+{resume_snippet or "Not available"}
+""".strip()
 
 
 def _analysis_prompt(jd_text: str, resume_text: str) -> str:
@@ -703,3 +812,51 @@ def _render_pdf_if_available(html_path: Path) -> Path | None:
     pdf_path = html_path.with_suffix(".pdf")
     pdfkit.from_file(str(html_path), str(pdf_path), configuration=configuration)
     return pdf_path
+
+
+def _answer_general_query_locally(
+    query: str,
+    jd_text: str | None,
+    resume_text: str | None,
+    last_analysis: dict[str, Any] | None,
+) -> str:
+    lowered = query.lower()
+    if "role" in lowered or "apply" in lowered:
+        if resume_text:
+            keywords = ", ".join(_extract_keywords(resume_text)[:8]) or "your existing skills"
+            return (
+                "You can likely target adjacent roles based on your current profile. "
+                f"From the available resume context, strong areas include {keywords}. "
+                "Possible directions are software developer, backend developer, full-stack developer, "
+                "automation engineer, QA automation engineer, data analyst, or platform/support engineering, "
+                "depending on what is actually true in your experience."
+            )
+        return (
+            "I can help with that. If you share your resume or a short skills summary, "
+            "I can suggest nearby roles, skill gaps, and stronger application targets."
+        )
+
+    if "improve" in lowered or "resume" in lowered:
+        return (
+            "A strong resume usually improves by matching the target role more closely, "
+            "using measurable achievements, stronger action verbs, and clearer skills alignment. "
+            "If you share a JD and resume, I can make the advice much more specific."
+        )
+
+    if "jd" in lowered or "job description" in lowered:
+        return (
+            "A good JD analysis looks for required skills, tools, years of experience, domain language, "
+            "and responsibilities so the resume can be tailored to match those signals."
+        )
+
+    if last_analysis:
+        return (
+            f"Based on the last analysis, your latest score was {last_analysis.get('score', 'unknown')} / 10 "
+            f"with alignment marked as {last_analysis.get('alignment_label', 'unknown')}. "
+            "You can ask about role fit, missing skills, how to improve bullets, or how to target similar jobs."
+        )
+
+    return (
+        "I can answer general career questions here as well. "
+        "Try asking about role fit, resume improvements, job search strategy, interview prep, or what roles suit your profile."
+    )
