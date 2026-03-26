@@ -1,11 +1,13 @@
 import os
-import google.generativeai as genai
+from groq import Groq
 import pdfplumber
 from docx import Document
 import json
 
-# Configure Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Configure Groq API
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),
+)
 
 
 def extract_text_from_pdf(pdf_path):
@@ -35,8 +37,6 @@ def extract_text(file_path):
 
 
 def analyze_resume(resume_text, job_description):
-    model = genai.GenerativeModel("gemini-1.5-flash")
-
     prompt = f"""
     You are an expert Resume Analyzer. Analyze the following resume against the provided Job Description.
     
@@ -64,16 +64,23 @@ def analyze_resume(resume_text, job_description):
     """
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json"
-            ),
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            # Updated to a currently supported model
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"},
         )
-        print(f"Raw Gemini response: {response.text}")
-        return json.loads(response.text)
+
+        response_content = chat_completion.choices[0].message.content
+        print(f"Raw Groq response: {response_content}")
+        return json.loads(response_content)
     except Exception as e:
-        print(f"Error calling Gemini: {e}")
+        print(f"Error calling Groq: {e}")
         return {
             "score": 0,
             "missing_keywords": [],
