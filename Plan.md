@@ -20,7 +20,7 @@ For the MVP, we recommend the following stack for rapid development and reliabil
 
 - **Bot Platform**: **Telegram** (via `python-telegram-bot`). Telegram is highly recommended for MVPs because its APIs handle file uploads (PDF/DOCX) and unstructured chat sessions exceptionally well natively. WhatsApp integration generally requires a specific Business API provider (like Twilio or Meta directly), making the initial setup slower.
 - **Backend Language**: **Python** (excellent MVP language for AI/NLP, PDF parsing, and scalable bot scripting).
-- **Core AI Engine**: **OpenAI API (GPT-4o)** or **Anthropic Claude 3.5 Sonnet**. These models are exceptional at instruction following, JSON extraction, and detailed document analysis.
+- **Core AI Engine**: **Google Gemini API (Free Tier)** or **Groq API (Llama 3 - Free Tier)**. Since there are no AI credits available, these APIs offer generous 100% free developer tiers that require no credit card, and they are excellent at structured JSON extraction.
 - **Document Parsing**: 
   - `PyPDF2` or `pdfplumber` for PDF text extraction.
   - `python-docx` for parsing DOCX files.
@@ -63,7 +63,7 @@ TurboCV/
 - Implement basic text extraction functions in `utils.py` using `pdfplumber` and `python-docx`.
 
 ### Step 2: AI Analysis & Feedback (40 mins)
-- Integrate the chosen LLM API in `utils.py`.
+- Integrate the free Gemini/Groq API in `utils.py`.
 - Write the core prompt instructing the LLM to score the resume vs JD and return structured JSON (Score, Missing Keywords, Improved Snippets).
 - Connect the bot to send the text-based review back to the user.
 
@@ -76,4 +76,4 @@ TurboCV/
 
 - **Platform Choice**: Does Telegram sound good for the MVP, or do you strictly require a discord bot? (Telegram is suggested for faster development).
 - **Templates**: Are there any specific styling elements you want in the generated resume templates, or should we design standard, clean tech templates?
-- **AI Choice**: Do you have a preference for the LLM (e.g., OpenAI vs Anthropic)?
+- **AI Choice**: Both Google Gemini and Groq are free. Are you okay going with Gemini for the easiest free AI integration?
