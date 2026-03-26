@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ name }} - Compact Resume</title>
+  <title>Jane Doe - Compact Resume</title>
   <style>
     :root {
       --bg: #f7f4ed;
@@ -94,12 +94,12 @@
   <div class="page">
     <div class="header">
       <div>
-        <h1>{{ name }}</h1>
-        <div class="contact">{{ contact }}</div>
+        <h1>Jane Doe</h1>
+        <div class="contact">jane@example.com | +91 9876543210</div>
       </div>
       <div class="scorebox">
-        Score {{ score }} / 10<br>
-        {{ alignment_label }}
+        Score 4.2 / 10<br>
+        Needs improvement
       </div>
     </div>
 
@@ -107,41 +107,41 @@
       <div>
         <section>
           <h2>Experience</h2>
-          <ul>{% for item in experience %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Software Developer Intern 2024</li></ul>
         </section>
 
         <section>
           <h2>Achievements</h2>
-          <ul>{% for item in achievements %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Built APIs and improved response time by 25 percent.</li></ul>
         </section>
 
-        {% if projects %}
+        
         <section>
           <h2>Projects</h2>
-          <ul>{% for item in projects %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Projects</li></ul>
         </section>
-        {% endif %}
+        
       </div>
 
       <div>
         <section>
           <h2>Skills</h2>
-          <ul>{% for item in skills %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>python</li><li>flask</li><li>sql</li><li>aws</li><li>git</li><li>jane</li><li>doe</li><li>example.com</li><li>software</li><li>developer</li></ul>
         </section>
 
-        {% if education %}
+        
         <section>
           <h2>Education</h2>
-          <ul>{% for item in education %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Education</li></ul>
         </section>
-        {% endif %}
+        
 
-        {% if certifications %}
+        
         <section>
           <h2>Certifications</h2>
-          <ul>{% for item in certifications %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Certificates</li></ul>
         </section>
-        {% endif %}
+        
 
       </div>
     </div>

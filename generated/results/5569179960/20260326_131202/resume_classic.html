@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ name }} - Classic Resume</title>
+  <title>Devanshi Sharma - Classic Resume</title>
   <style>
     :root {
       --paper: #faf7f0;
@@ -72,46 +72,48 @@
 </head>
 <body>
   <div class="page">
-    <h1>{{ name }}</h1>
-    <div class="contact">{{ contact }}</div>
-    <div class="meta">TurboCV score: {{ score }} / 10 | Alignment: {{ alignment_label }}</div>
+    <h1>Devanshi Sharma</h1>
+    <div class="headline">Mechanical Engineer Candidate</div>
+    <div class="contact">Email: devanshi.sharma@email.com | Phone: +91-XXXXXXXXXX | Location: India</div>
+    <div class="meta">TurboCV score: 2.0 / 10 | Alignment: Needs improvement</div>
+
+    <section>
+      <h2>Summary</h2>
+      <div class="summary">Software engineer with strong problem-solving skills and a willingness to learn mechanical engineering principles</div>
+    </section>
 
     <section>
       <h2>Skills</h2>
-      <ul>{% for item in skills %}<li>{{ item }}</li>{% endfor %}</ul>
+      <ul><li>problem-solving</li><li>analytical thinking</li><li>CAD tools (familiarization needed)</li></ul>
     </section>
 
     <section>
-      <h2>Experience</h2>
-      <ul>{% for item in experience %}<li>{{ item }}</li>{% endfor %}</ul>
+      <h2>Experience Highlights</h2>
+      <ul><li>Software Engineer | AI Systems Project</li></ul>
     </section>
 
-    <section>
-      <h2>Achievements</h2>
-      <ul>{% for item in achievements %}<li>{{ item }}</li>{% endfor %}</ul>
-    </section>
-
-    {% if projects %}
+    
     <section>
       <h2>Projects</h2>
-      <ul>{% for item in projects %}<li>{{ item }}</li>{% endfor %}</ul>
+      <ul><li>AI Interview Bot</li><li>Automation Agent System</li></ul>
     </section>
-    {% endif %}
+    
 
-    {% if education %}
+    
     <section>
       <h2>Education</h2>
-      <ul>{% for item in education %}<li>{{ item }}</li>{% endfor %}</ul>
+      <ul><li>Bachelor of Technology in Computer Science</li></ul>
     </section>
-    {% endif %}
+    
 
-    {% if certifications %}
+    
+
+    
     <section>
-      <h2>Certifications</h2>
-      <ul>{% for item in certifications %}<li>{{ item }}</li>{% endfor %}</ul>
+      <h2>Notes Before Sending</h2>
+      <ul><li>Need to acquire knowledge of mechanical engineering fundamentals and CAD tools</li></ul>
     </section>
-    {% endif %}
-
+    
   </div>
 </body>
 </html>

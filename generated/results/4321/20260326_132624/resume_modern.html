@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ name }} - Modern Resume</title>
+  <title>Jane Doe - Modern Resume</title>
   <style>
     :root {
       --bg: #f4efe8;
@@ -98,49 +98,49 @@
 <body>
   <div class="page">
     <aside class="sidebar">
-      <h1>{{ name }}</h1>
-      <div class="contact">{{ contact }}</div>
-      <div class="badge">Score {{ score }} / 10</div>
-      <div class="badge">{{ alignment_label }}</div>
+      <h1>Jane Doe</h1>
+      <div class="contact">jane@example.com | +91 9876543210 | linkedin.com/in/janedoe</div>
+      <div class="badge">Score 4.8 / 10</div>
+      <div class="badge">Needs improvement</div>
 
       <section style="margin-top: 28px;">
         <h2 style="color: white;">Skills</h2>
-        <ul>{% for item in skills %}<li>{{ item }}</li>{% endfor %}</ul>
+        <ul><li>Python</li><li>Flask</li><li>SQL</li><li>Git</li><li>Docker</li></ul>
       </section>
 
-      {% if certifications %}
+      
       <section>
         <h2 style="color: white;">Certifications</h2>
-        <ul>{% for item in certifications %}<li>{{ item }}</li>{% endfor %}</ul>
+        <ul><li>AWS Cloud Practitioner</li></ul>
       </section>
-      {% endif %}
+      
     </aside>
 
     <main class="main">
       <div class="stack">
         <section>
           <h2>Experience</h2>
-          <ul>{% for item in experience %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Software Developer Intern, ABC Tech, 2024</li><li>Worked on internal APIs for reporting systems</li></ul>
         </section>
 
         <section>
           <h2>Achievements</h2>
-          <ul>{% for item in achievements %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Improved response time by 25 percent</li><li>Reduced manual tracking effort by 30 percent</li></ul>
         </section>
 
-        {% if projects %}
+        
         <section>
           <h2>Projects</h2>
-          <ul>{% for item in projects %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>Inventory tracking web app for manufacturing reports</li><li>Automation dashboard for plant maintenance tickets</li></ul>
         </section>
-        {% endif %}
+        
 
-        {% if education %}
+        
         <section>
           <h2>Education</h2>
-          <ul>{% for item in education %}<li>{{ item }}</li>{% endfor %}</ul>
+          <ul><li>B.Tech in Computer Science</li></ul>
         </section>
-        {% endif %}
+        
 
       </div>
     </main>

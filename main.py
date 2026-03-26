@@ -4,8 +4,15 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import BotCommand, Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from utils import (
     SUPPORTED_JD_FORMATS,
@@ -26,6 +33,7 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+DOWNLOAD_CALLBACK = "download_improved_resume"
 
 
 def command_overview() -> str:
@@ -60,6 +68,12 @@ def set_waiting_state(
 ) -> None:
     context.user_data["awaiting_jd"] = jd
     context.user_data["awaiting_resume"] = resume
+
+
+def download_resume_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("Download Improved Resume", callback_data=DOWNLOAD_CALLBACK)]]
+    )
 
 
 def looks_like_general_query(message_text: str) -> bool:
@@ -104,6 +118,7 @@ async def post_init(application: Application) -> None:
             BotCommand("help", "Show commands and supported formats"),
             BotCommand("jd", "Attach or paste the job description"),
             BotCommand("resume", "Attach or paste the resume"),
+            BotCommand("download_resume", "Download the last generated improved resume"),
             BotCommand("cancel", "Cancel the current intake step"),
         ]
     )
@@ -157,6 +172,16 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "Current intake step canceled.\n"
         "Use /jd to attach a job description or /resume to continue with the saved JD."
     )
+
+
+async def download_resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await send_generated_resume_files(update, context)
+
+
+async def download_resume_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    await send_generated_resume_files(update, context, from_callback=True)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -375,32 +400,60 @@ async def process_resume_text(
         return
 
     context.user_data["last_analysis"] = analysis
+    context.user_data["last_generated_files"] = analysis["generated_files"]
 
     matched = ", ".join(analysis["matched_keywords"][:8]) or "No strong keyword overlap detected yet"
     missing = ", ".join(analysis["missing_keywords"][:8]) or "No critical gaps detected"
     suggestions = "\n".join(f"- {item}" for item in analysis["suggestions"])
+    detailed_analysis = analysis.get("detailed_analysis") or analysis["summary"]
+    recommended_roles = ", ".join(analysis.get("recommended_roles", [])) or "No strong role recommendation available yet"
+    apply_targets = ", ".join(analysis.get("apply_targets", [])) or "No specific application channels available yet"
 
     result_message = (
         f"Processing complete for {source_label}.\n\n"
         f"Score: {analysis['score']} / 10\n"
         f"Alignment: {analysis['alignment_label']}\n"
-        f"Summary: {analysis['summary']}\n\n"
+        f"Quick summary: {analysis['summary']}\n\n"
+        f"Detailed analysis:\n{detailed_analysis}\n\n"
         f"Matched keywords: {matched}\n"
-        f"Missing or weak keywords: {missing}"
+        f"Missing or weak keywords: {missing}\n\n"
+        f"Roles you are most fit for right now: {recommended_roles}\n"
+        f"Best places to apply: {apply_targets}"
     )
 
     if analysis["score"] < 8 or analysis["suggestions"]:
         result_message += f"\n\nSuggestions to improve:\n{suggestions}"
 
     result_message += (
-        "\n\nImproved resume drafts are attached below."
-        "\nPlease review and replace any placeholders with your real achievements before using them."
+        "\n\nYour improved resume is ready."
+        "\nUse the button below or /download_resume to get the generated files."
     )
-    await update.message.reply_text(result_message)
+    await update.message.reply_text(result_message, reply_markup=download_resume_keyboard())
 
-    for file_path in analysis["generated_files"]:
+
+async def send_generated_resume_files(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    from_callback: bool = False,
+) -> None:
+    generated_files = context.user_data.get("last_generated_files") or []
+    if not generated_files:
+        message = "No generated resume is available yet. Please analyze a resume first."
+        if from_callback:
+            await update.callback_query.message.reply_text(message)
+        else:
+            await update.message.reply_text(message)
+        return
+
+    target_message = update.callback_query.message if from_callback else update.message
+    await target_message.reply_text(
+        "Downloading your improved resume files now.\n"
+        "Please review the content before using it in applications."
+    )
+
+    for file_path in generated_files:
         with Path(file_path).open("rb") as handle:
-            await update.message.reply_document(document=handle, filename=Path(file_path).name)
+            await target_message.reply_document(document=handle, filename=Path(file_path).name)
 
 
 def main() -> None:
@@ -416,7 +469,9 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("jd", jd_command))
     application.add_handler(CommandHandler("resume", resume_command))
+    application.add_handler(CommandHandler("download_resume", download_resume_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
+    application.add_handler(CallbackQueryHandler(download_resume_callback, pattern=f"^{DOWNLOAD_CALLBACK}$"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

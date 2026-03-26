@@ -124,6 +124,65 @@ STOPWORDS = {
     "skills",
     "skill",
 }
+SECTION_ALIASES = {
+    "skills": {
+        "skills",
+        "technical skills",
+        "core skills",
+        "key skills",
+        "competencies",
+        "core competencies",
+        "tools",
+        "tech stack",
+    },
+    "experience": {
+        "experience",
+        "work experience",
+        "professional experience",
+        "employment",
+        "work history",
+        "internship",
+        "internships",
+    },
+    "achievements": {
+        "achievements",
+        "achievement",
+        "accomplishments",
+        "awards",
+        "highlights",
+    },
+    "projects": {
+        "project",
+        "projects",
+        "academic projects",
+        "personal projects",
+        "key projects",
+    },
+    "education": {
+        "education",
+        "academic background",
+        "academics",
+        "qualification",
+        "qualifications",
+    },
+    "certifications": {
+        "certification",
+        "certifications",
+        "certificate",
+        "certificates",
+        "licenses",
+        "courses",
+    },
+    "ignore": {
+        "summary",
+        "about",
+        "profile",
+        "objective",
+        "career objective",
+        "professional summary",
+        "about me",
+    },
+}
 
 
 def generated_output_dir(kind: str, chat_id: int) -> Path:
@@ -175,11 +234,24 @@ def extract_resume_text(path: Path) -> str:
 
 def analyze_resume_against_jd(jd_text: str, resume_text: str, chat_id: int) -> dict[str, Any]:
     analysis = _analyze_with_ai(jd_text, resume_text) or _analyze_locally(jd_text, resume_text)
+    if not analysis.get("recommended_roles"):
+        analysis["recommended_roles"] = _suggest_roles(
+            jd_text,
+            resume_text,
+            analysis.get("matched_keywords", []),
+        )
+    if not analysis.get("apply_targets"):
+        analysis["apply_targets"] = _suggest_apply_targets(
+            analysis.get("score", 5.0),
+            jd_text,
+            resume_text,
+        )
     draft_resume = analysis.get("draft_resume") or _build_resume_draft(
         jd_text,
         resume_text,
         analysis,
     )
+    draft_resume = _merge_draft_with_resume_details(resume_text, draft_resume)
     analysis["draft_resume"] = draft_resume
     analysis["generated_files"] = [
         str(path) for path in _generate_resume_files(chat_id, analysis)
@@ -412,29 +484,36 @@ Required JSON shape:
   "score": 0.0,
   "alignment_label": "Strong fit | Moderate fit | Needs improvement",
   "summary": "short paragraph",
+  "detailed_analysis": "4 to 6 sentence explanation of fit, strengths, gaps, and improvement direction",
   "matched_keywords": ["keyword"],
   "missing_keywords": ["keyword"],
   "suggestions": ["specific suggestion"],
+  "recommended_roles": ["role"],
+  "apply_targets": ["platform or place to apply"],
   "draft_resume": {{
     "name": "candidate name or Candidate Name",
-    "headline": "target headline",
     "contact": "contact line or placeholder",
-    "summary": "tailored summary without inventing facts",
     "skills": ["skill"],
-    "experience": ["bullet"],
+    "experience": ["experience line"],
+    "achievements": ["achievement bullet"],
     "projects": ["bullet"],
     "education": ["bullet"],
-    "certifications": ["bullet"],
-    "notes": ["placeholder note only when needed"]
+    "certifications": ["bullet"]
   }}
 }}
 
 Rules:
 - Score must be out of 10.
 - Do not invent experience or companies.
-- Use placeholders like [Add metric from your real work] only when necessary.
+- Do not exaggerate or add unverified skills.
+- Keep the improved resume factual and limited to contact details, name, skills, projects, experience, achievements, certifications, and education.
+- Preserve the factual details from the original resume. Do not drop projects, experience lines, certifications, or education details that already exist in the resume.
+- Exclude About/Profile/Summary sections from the improved resume output.
 - Suggestions must be practical and action oriented.
+- detailed_analysis should explain why the score was given, what aligns well, what is missing, and what the candidate should focus on next.
 - Keep matched_keywords and missing_keywords concise.
+- recommended_roles should be realistic adjacent roles based on the actual resume and JD.
+- apply_targets should be realistic places or channels where the candidate should apply.
 
 Job Description:
 {jd_text}
@@ -464,9 +543,17 @@ def _normalize_ai_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "score": round(float(payload.get("score", 5.0)), 1),
         "alignment_label": payload.get("alignment_label", "Needs improvement"),
         "summary": str(payload.get("summary", "Resume analysis completed.")),
+        "detailed_analysis": str(
+            payload.get(
+                "detailed_analysis",
+                payload.get("summary", "Resume analysis completed."),
+            )
+        ).strip(),
         "matched_keywords": _clean_string_list(payload.get("matched_keywords", [])),
         "missing_keywords": _clean_string_list(payload.get("missing_keywords", [])),
         "suggestions": _clean_string_list(payload.get("suggestions", [])),
+        "recommended_roles": _clean_string_list(payload.get("recommended_roles", [])),
+        "apply_targets": _clean_string_list(payload.get("apply_targets", [])),
         "draft_resume": _normalize_draft(payload.get("draft_resume", {})),
     }
 
@@ -474,15 +561,13 @@ def _normalize_ai_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _normalize_draft(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": str(payload.get("name", "Candidate Name")).strip() or "Candidate Name",
-        "headline": str(payload.get("headline", "Target Role Resume")).strip() or "Target Role Resume",
         "contact": str(payload.get("contact", "Add email | Add phone | Add LinkedIn")).strip(),
-        "summary": str(payload.get("summary", "")).strip(),
         "skills": _clean_string_list(payload.get("skills", [])),
         "experience": _clean_string_list(payload.get("experience", [])),
+        "achievements": _clean_string_list(payload.get("achievements", [])),
         "projects": _clean_string_list(payload.get("projects", [])),
         "education": _clean_string_list(payload.get("education", [])),
         "certifications": _clean_string_list(payload.get("certifications", [])),
-        "notes": _clean_string_list(payload.get("notes", [])),
     }
 
 
@@ -541,14 +626,26 @@ def _analyze_locally(jd_text: str, resume_text: str) -> dict[str, Any]:
         f"The resume shows a {label.lower()} against the JD. "
         f"It matches {len(matched)} important keywords and misses {len(missing)} higher-priority JD terms."
     )
+    detailed_analysis = _build_detailed_analysis(
+        score,
+        label,
+        matched,
+        missing,
+        sections,
+        metrics_score,
+        action_score,
+    )
 
     return {
         "score": score,
         "alignment_label": label,
         "summary": summary,
+        "detailed_analysis": detailed_analysis,
         "matched_keywords": matched,
         "missing_keywords": missing,
         "suggestions": suggestions[:5],
+        "recommended_roles": _suggest_roles(jd_text, resume_text, matched),
+        "apply_targets": _suggest_apply_targets(score, jd_text, resume_text),
         "draft_resume": _build_resume_draft(
             jd_text,
             resume_text,
@@ -586,46 +683,35 @@ def _build_resume_draft(
     resume_text: str,
     analysis: dict[str, Any],
 ) -> dict[str, Any]:
-    lines = [line.strip() for line in resume_text.splitlines() if line.strip()]
-    name = lines[0][:60] if lines else "Candidate Name"
-    contact = _find_contact_line(lines)
-    role_hint = _guess_role_from_jd(jd_text)
-    matched = analysis.get("matched_keywords", [])[:8]
-    missing = analysis.get("missing_keywords", [])[:5]
-    achievements = _extract_resume_bullets(lines)
+    parsed = _parse_resume_sections(resume_text)
+    matched = analysis.get("matched_keywords", [])
+    skills = parsed["skills"] or matched or _extract_keywords(resume_text)
+    experience = parsed["experience"] or _extract_experience_lines(parsed["all_lines"])
+    achievements = parsed["achievements"] or _extract_resume_bullets(parsed["all_lines"])
+    projects = parsed["projects"]
+    education = parsed["education"]
+    certifications = parsed["certifications"]
+
+    if not experience:
+        experience = ["Add your real work experience entries here with company, role, and duration."]
     if not achievements:
-        achievements = [
-            "Tailored past experience to align with the target role and highlighted relevant outcomes.",
-            "Add a real achievement here with a metric that demonstrates impact.",
-            "Showcase one project or responsibility that maps directly to the JD requirements.",
-        ]
-
-    summary_bits = matched[:4] or ["relevant experience", "execution", "problem solving"]
-    summary = (
-        f"Results-focused candidate targeting {role_hint}. "
-        f"Highlights experience across {', '.join(summary_bits)} while keeping the resume aligned to the role."
-    )
-
-    skills = matched + [f"Validate and add if true: {item}" for item in missing]
-    education = _extract_section_lines(lines, ("education", "university", "college", "degree"), 3)
-    projects = _extract_section_lines(lines, ("project", "portfolio", "case study"), 3)
-    certifications = _extract_section_lines(lines, ("certification", "certificate", "course"), 3)
-    notes = [
-        "Replace any validation notes with real, provable skills before sharing the resume.",
-        "Update placeholders with exact metrics from your own work.",
-    ]
+        achievements = ["Add real achievement bullets here with measurable impact from your actual work."]
+    if not projects:
+        projects = ["Add real project details that are relevant to the target role."]
+    if not certifications:
+        certifications = ["Add certifications only if you actually hold them."]
+    if not education:
+        education = ["Add your real education details here."]
 
     return {
-        "name": name,
-        "headline": f"{role_hint} Resume",
-        "contact": contact,
-        "summary": summary,
-        "skills": skills[:10],
-        "experience": achievements[:6],
-        "projects": projects,
-        "education": education,
-        "certifications": certifications,
-        "notes": notes,
+        "name": parsed["name"],
+        "contact": parsed["contact"],
+        "skills": _dedupe_keep_order(skills),
+        "experience": _dedupe_keep_order(experience),
+        "achievements": _dedupe_keep_order(achievements),
+        "projects": _dedupe_keep_order(projects),
+        "education": _dedupe_keep_order(education),
+        "certifications": _dedupe_keep_order(certifications),
     }
 
 
@@ -634,6 +720,225 @@ def _find_contact_line(lines: list[str]) -> str:
         if "@" in line or re.search(r"\+?\d[\d\s-]{7,}", line):
             return line[:100]
     return "Add email | Add phone | Add LinkedIn"
+
+
+def _merge_draft_with_resume_details(resume_text: str, draft_resume: dict[str, Any]) -> dict[str, Any]:
+    parsed = _parse_resume_sections(resume_text)
+    return {
+        "name": parsed["name"] or draft_resume.get("name", "Candidate Name"),
+        "contact": parsed["contact"] or draft_resume.get("contact", "Add email | Add phone | Add LinkedIn"),
+        "skills": _dedupe_keep_order(parsed["skills"] + draft_resume.get("skills", [])),
+        "experience": _dedupe_keep_order(parsed["experience"] + draft_resume.get("experience", [])),
+        "achievements": _dedupe_keep_order(parsed["achievements"] + draft_resume.get("achievements", [])),
+        "projects": _dedupe_keep_order(parsed["projects"] + draft_resume.get("projects", [])),
+        "education": _dedupe_keep_order(parsed["education"] + draft_resume.get("education", [])),
+        "certifications": _dedupe_keep_order(parsed["certifications"] + draft_resume.get("certifications", [])),
+    }
+
+
+def _parse_resume_sections(resume_text: str) -> dict[str, Any]:
+    lines = [line.strip() for line in resume_text.splitlines() if line.strip()]
+    result = {
+        "name": "Candidate Name",
+        "contact": "Add email | Add phone | Add LinkedIn",
+        "skills": [],
+        "experience": [],
+        "achievements": [],
+        "projects": [],
+        "education": [],
+        "certifications": [],
+        "all_lines": lines,
+    }
+    if not lines:
+        return result
+
+    name = _extract_name(lines)
+    if name:
+        result["name"] = name
+
+    contact_entries = []
+    current_section: str | None = None
+    uncategorized: list[str] = []
+
+    for idx, line in enumerate(lines):
+        if idx == 0 and line == result["name"]:
+            continue
+        if _looks_like_contact(line):
+            contact_entries.append(line)
+            continue
+
+        heading = _detect_section_heading(line)
+        if heading == "ignore":
+            current_section = "ignore"
+            continue
+        if heading:
+            current_section = heading
+            continue
+
+        if current_section and current_section != "ignore":
+            result[current_section].append(line)
+            continue
+
+        guessed_section = _guess_line_section(line)
+        if guessed_section:
+            result[guessed_section].append(line)
+        else:
+            uncategorized.append(line)
+
+    if contact_entries:
+        result["contact"] = " | ".join(_dedupe_keep_order(contact_entries))
+    else:
+        result["contact"] = _find_contact_line(lines)
+
+    result["skills"] = _clean_resume_items(result["skills"], split_commas=True)
+    result["experience"] = _clean_resume_items(result["experience"])
+    result["achievements"] = _clean_resume_items(result["achievements"])
+    result["projects"] = _clean_resume_items(result["projects"])
+    result["education"] = _clean_resume_items(result["education"])
+    result["certifications"] = _clean_resume_items(result["certifications"])
+
+    uncategorized = _clean_resume_items(uncategorized)
+    for item in uncategorized:
+        if item not in result["experience"] and item not in result["achievements"]:
+            if _guess_line_section(item) == "skills":
+                result["skills"].append(item)
+            else:
+                result["experience"].append(item)
+
+    result["skills"] = _dedupe_keep_order(result["skills"])
+    result["experience"] = _dedupe_keep_order(result["experience"])
+    result["achievements"] = _dedupe_keep_order(result["achievements"])
+    result["projects"] = _dedupe_keep_order(result["projects"])
+    result["education"] = _dedupe_keep_order(result["education"])
+    result["certifications"] = _dedupe_keep_order(result["certifications"])
+    return result
+
+
+def _extract_name(lines: list[str]) -> str:
+    for line in lines[:3]:
+        if _looks_like_contact(line):
+            continue
+        if _detect_section_heading(line):
+            continue
+        if len(line.split()) <= 6:
+            return line[:80]
+    return "Candidate Name"
+
+
+def _looks_like_contact(line: str) -> bool:
+    lowered = line.lower()
+    return (
+        "@" in line
+        or bool(re.search(r"\+?\d[\d\s().-]{7,}", line))
+        or "linkedin.com" in lowered
+        or "github.com" in lowered
+        or "portfolio" in lowered
+        or "www." in lowered
+        or lowered.startswith("phone")
+        or lowered.startswith("email")
+        or lowered.startswith("address")
+    )
+
+
+def _detect_section_heading(line: str) -> str | None:
+    normalized = re.sub(r"[^a-zA-Z ]", " ", line.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    for section, aliases in SECTION_ALIASES.items():
+        if normalized in aliases:
+            return section
+    return None
+
+
+def _guess_line_section(line: str) -> str | None:
+    lowered = line.lower()
+    if any(keyword in lowered for keyword in ("university", "college", "b.tech", "btech", "degree", "school", "cgpa")):
+        return "education"
+    if any(keyword in lowered for keyword in ("certificate", "certification", "licensed", "course")):
+        return "certifications"
+    if any(keyword in lowered for keyword in ("project", "capstone", "portfolio")):
+        return "projects"
+    if any(keyword in lowered for keyword in ("award", "achieved", "achievement", "winner", "rank")):
+        return "achievements"
+    if re.search(r"\b(20\d{2}|19\d{2})\b", line) or any(
+        token in lowered for token in ("engineer", "developer", "intern", "analyst", "manager", "executive")
+    ):
+        return "experience"
+    if "," in line and len(line.split()) <= 20:
+        return "skills"
+    if any(token in lowered for token in COMMON_SKILLS):
+        return "skills"
+    if any(verb in lowered for verb in ACTION_VERBS) or re.search(r"\d", line):
+        return "achievements"
+    return None
+
+
+def _clean_resume_items(items: list[str], split_commas: bool = False) -> list[str]:
+    cleaned: list[str] = []
+    for item in items:
+        text = item.strip().strip("-*").strip()
+        if not text:
+            continue
+        if split_commas and "," in text and len(text.split()) <= 25:
+            parts = [part.strip() for part in text.split(",") if part.strip()]
+            cleaned.extend(parts)
+        else:
+            cleaned.append(text)
+    return cleaned
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        normalized = re.sub(r"\s+", " ", item.strip().lower())
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(item.strip())
+    return deduped
+
+
+def _build_detailed_analysis(
+    score: float,
+    label: str,
+    matched: list[str],
+    missing: list[str],
+    sections: dict[str, bool],
+    metrics_score: float,
+    action_score: float,
+) -> str:
+    matched_preview = ", ".join(matched[:5]) if matched else "very limited direct keyword overlap"
+    missing_preview = ", ".join(missing[:5]) if missing else "no major keyword gaps"
+    present_sections = [name for name, present in sections.items() if present]
+    missing_sections = [name for name, present in sections.items() if not present]
+
+    narrative = [
+        f"This resume is currently assessed as a {label.lower()} with a score of {score} out of 10.",
+        f"The strongest alignment comes from these visible matches: {matched_preview}.",
+        f"The main gaps against the target role are: {missing_preview}.",
+    ]
+
+    if present_sections:
+        narrative.append(
+            f"The resume structure already includes these useful sections: {', '.join(present_sections)}."
+        )
+    if missing_sections:
+        narrative.append(
+            f"It would be stronger with clearer coverage of these sections: {', '.join(missing_sections)}."
+        )
+    if metrics_score < 1.0:
+        narrative.append(
+            "The impact is not yet fully convincing because the resume needs more measurable outcomes such as percentages, counts, time saved, or business results."
+        )
+    if action_score < 1.0:
+        narrative.append(
+            "Some bullets would read more strongly if they were rewritten with sharper action verbs and clearer ownership."
+        )
+    narrative.append(
+        "The best improvement path is to align real experience more closely with the JD language while keeping every claim factual and provable."
+    )
+
+    return " ".join(narrative)
 
 
 def _guess_role_from_jd(jd_text: str) -> str:
@@ -653,7 +958,64 @@ def _extract_resume_bullets(lines: list[str]) -> list[str]:
             continue
         if any(verb in cleaned.lower() for verb in ACTION_VERBS) or re.search(r"\d", cleaned):
             bullets.append(cleaned[:220])
-    return bullets[:6]
+    return bullets
+
+
+def _extract_experience_lines(lines: list[str]) -> list[str]:
+    experience_lines = []
+    for line in lines:
+        lowered = line.lower()
+        if any(token in lowered for token in ("experience", "employment", "work history")):
+            continue
+        if re.search(r"\b(20\d{2}|19\d{2})\b", line) or any(
+            token in lowered for token in ("engineer", "developer", "intern", "analyst", "manager")
+        ):
+            if len(line.split()) >= 3:
+                experience_lines.append(line[:180])
+    return experience_lines
+
+
+def _suggest_roles(jd_text: str, resume_text: str, matched_keywords: list[str]) -> list[str]:
+    role_candidates = []
+    combined = f"{jd_text}\n{resume_text}".lower()
+    keyword_blob = " ".join(matched_keywords).lower()
+
+    if any(token in combined or token in keyword_blob for token in ("python", "fastapi", "django", "flask", "api")):
+        role_candidates.append("Backend Developer")
+    if any(token in combined or token in keyword_blob for token in ("react", "javascript", "typescript", "html", "css")):
+        role_candidates.append("Frontend Developer")
+    if any(token in combined or token in keyword_blob for token in ("react", "node.js", "full stack", "fullstack")):
+        role_candidates.append("Full Stack Developer")
+    if any(token in combined or token in keyword_blob for token in ("sql", "data", "analytics", "power bi", "excel")):
+        role_candidates.append("Data Analyst")
+    if any(token in combined or token in keyword_blob for token in ("testing", "qa", "automation", "selenium")):
+        role_candidates.append("QA Automation Engineer")
+    if any(token in combined or token in keyword_blob for token in ("aws", "docker", "kubernetes", "linux", "devops")):
+        role_candidates.append("Cloud or DevOps Engineer")
+
+    if not role_candidates:
+        role_candidates = ["Software Developer", "Operations or Support Engineer", "Junior Analyst"]
+
+    deduped = []
+    for role in role_candidates:
+        if role not in deduped:
+            deduped.append(role)
+    return deduped[:4]
+
+
+def _suggest_apply_targets(score: float, jd_text: str, resume_text: str) -> list[str]:
+    apply_targets = [
+        "LinkedIn Jobs",
+        "Naukri",
+        "Indeed",
+        "company careers pages",
+    ]
+    combined = f"{jd_text}\n{resume_text}".lower()
+    if any(token in combined for token in ("startup", "fast-paced", "0-1", "product")):
+        apply_targets.append("startup job boards and product company career pages")
+    if score >= 7:
+        apply_targets.insert(0, "direct referrals and targeted company applications")
+    return apply_targets[:5]
 
 
 def _extract_section_lines(lines: list[str], keywords: tuple[str, ...], limit: int) -> list[str]:
@@ -674,15 +1036,13 @@ def _generate_resume_files(chat_id: int, analysis: dict[str, Any]) -> list[Path]
     context = {
         "analysis": analysis,
         "name": draft["name"],
-        "headline": draft["headline"],
         "contact": draft["contact"],
-        "summary": draft["summary"],
         "skills": draft["skills"],
         "experience": draft["experience"],
+        "achievements": draft["achievements"],
         "projects": draft["projects"],
         "education": draft["education"],
         "certifications": draft["certifications"],
-        "notes": draft["notes"],
         "score": analysis["score"],
         "alignment_label": analysis["alignment_label"],
     }
@@ -716,17 +1076,16 @@ def _generate_resume_files(chat_id: int, analysis: dict[str, Any]) -> list[Path]
 def _write_text_resume(path: Path, context: dict[str, Any]) -> Path:
     lines = [
         context["name"],
-        context["headline"],
         context["contact"],
-        "",
-        "SUMMARY",
-        context["summary"],
         "",
         "SKILLS",
         *[f"- {item}" for item in context["skills"]],
         "",
-        "EXPERIENCE HIGHLIGHTS",
+        "EXPERIENCE",
         *[f"- {item}" for item in context["experience"]],
+        "",
+        "ACHIEVEMENTS",
+        *[f"- {item}" for item in context["achievements"]],
     ]
     if context["projects"]:
         lines.extend(["", "PROJECTS", *[f"- {item}" for item in context["projects"]]])
@@ -736,8 +1095,6 @@ def _write_text_resume(path: Path, context: dict[str, Any]) -> Path:
         lines.extend(
             ["", "CERTIFICATIONS", *[f"- {item}" for item in context["certifications"]]]
         )
-    if context["notes"]:
-        lines.extend(["", "NOTES", *[f"- {item}" for item in context["notes"]]])
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -745,18 +1102,16 @@ def _write_text_resume(path: Path, context: dict[str, Any]) -> Path:
 def _write_markdown_resume(path: Path, context: dict[str, Any]) -> Path:
     sections = [
         f"# {context['name']}",
-        context["headline"],
-        "",
         context["contact"],
-        "",
-        "## Summary",
-        context["summary"],
         "",
         "## Skills",
         *[f"- {item}" for item in context["skills"]],
         "",
-        "## Experience Highlights",
+        "## Experience",
         *[f"- {item}" for item in context["experience"]],
+        "",
+        "## Achievements",
+        *[f"- {item}" for item in context["achievements"]],
     ]
     if context["projects"]:
         sections.extend(["", "## Projects", *[f"- {item}" for item in context["projects"]]])
@@ -766,8 +1121,6 @@ def _write_markdown_resume(path: Path, context: dict[str, Any]) -> Path:
         sections.extend(
             ["", "## Certifications", *[f"- {item}" for item in context["certifications"]]]
         )
-    if context["notes"]:
-        sections.extend(["", "## Notes", *[f"- {item}" for item in context["notes"]]])
     path.write_text("\n".join(sections), encoding="utf-8")
     return path
 
@@ -775,20 +1128,17 @@ def _write_markdown_resume(path: Path, context: dict[str, Any]) -> Path:
 def _write_docx_resume(path: Path, context: dict[str, Any]) -> Path:
     document = Document()
     document.add_heading(context["name"], level=0)
-    document.add_paragraph(context["headline"])
     document.add_paragraph(context["contact"])
 
-    _add_docx_section(document, "Summary", [context["summary"]])
     _add_docx_section(document, "Skills", context["skills"])
-    _add_docx_section(document, "Experience Highlights", context["experience"])
+    _add_docx_section(document, "Experience", context["experience"])
+    _add_docx_section(document, "Achievements", context["achievements"])
     if context["projects"]:
         _add_docx_section(document, "Projects", context["projects"])
     if context["education"]:
         _add_docx_section(document, "Education", context["education"])
     if context["certifications"]:
         _add_docx_section(document, "Certifications", context["certifications"])
-    if context["notes"]:
-        _add_docx_section(document, "Notes", context["notes"])
 
     document.save(path)
     return path
