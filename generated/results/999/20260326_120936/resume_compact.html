@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Jane Doe - Compact Resume</title>
+  <style>
+    :root {
+      --bg: #f7f4ed;
+      --ink: #17202a;
+      --muted: #5f6c76;
+      --accent: #1d6b57;
+      --accent-soft: #d6ebe4;
+      --line: #d7ddd8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background:
+        linear-gradient(180deg, rgba(29, 107, 87, 0.08), transparent 22%),
+        var(--bg);
+      color: var(--ink);
+      font-family: Arial, sans-serif;
+    }
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      background: white;
+      border: 1px solid var(--line);
+      padding: 28px;
+    }
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: start;
+      border-bottom: 2px solid var(--accent-soft);
+      padding-bottom: 14px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+    }
+    .headline {
+      margin-top: 6px;
+      color: var(--accent);
+      font-weight: bold;
+    }
+    .contact {
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .scorebox {
+      padding: 12px 14px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 14px;
+      text-align: right;
+      min-width: 160px;
+      font-weight: bold;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 22px;
+      margin-top: 22px;
+    }
+    section {
+      margin-bottom: 18px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.55;
+    }
+    .summary {
+      line-height: 1.7;
+    }
+    @media (max-width: 760px) {
+      .header, .grid { grid-template-columns: 1fr; }
+      .scorebox { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <h1>Jane Doe</h1>
+        <div class="headline">Python Backend Developer Resume</div>
+        <div class="contact">jane@example.com | +91 9876543210</div>
+      </div>
+      <div class="scorebox">
+        Score 6.5 / 10<br>
+        Moderate fit
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <section>
+          <h2>Summary</h2>
+          <div class="summary">Results-focused candidate targeting Python Backend Developer. Highlights experience across python, sql, backend, developer while keeping the resume aligned to the role.</div>
+        </section>
+
+        <section>
+          <h2>Experience Highlights</h2>
+          <ul><li>Built backend APIs and improved response time by 25 percent.</li></ul>
+        </section>
+
+        
+      </div>
+
+      <div>
+        <section>
+          <h2>Skills</h2>
+          <ul><li>python</li><li>sql</li><li>backend</li><li>developer</li><li>apis</li><li>Validate and add if true: fastapi</li><li>Validate and add if true: docker</li><li>Validate and add if true: aws</li><li>Validate and add if true: rest</li><li>Validate and add if true: requirements</li></ul>
+        </section>
+
+        
+        <section>
+          <h2>Education</h2>
+          <ul><li>Education</li></ul>
+        </section>
+        
+
+        
+
+        
+        <section>
+          <h2>Review Notes</h2>
+          <ul><li>Replace any validation notes with real, provable skills before sharing the resume.</li><li>Update placeholders with exact metrics from your own work.</li></ul>
+        </section>
+        
+      </div>
+    </div>
+  </div>
+</body>
+</html>
