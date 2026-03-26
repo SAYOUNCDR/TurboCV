@@ -1,0 +1,8 @@
+python-telegram-bot
+python-dotenv
+google-generativeai
+groq
+pdfplumber
+python-docx
+Jinja2
+pdfkit
