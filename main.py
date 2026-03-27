@@ -1,5 +1,8 @@
-import os
+import asyncio
 import logging
+import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables first
@@ -8,20 +11,47 @@ load_dotenv()
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
-    ConversationHandler,
-    ContextTypes,
 )
 import utils
 import json
 
-# Set up logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+DOWNLOAD_CALLBACK = "download_improved_resume"
+
+
+def command_overview() -> str:
+    return (
+        "Available commands:\n"
+        "/start - Show welcome message and current status\n"
+        "/help - Show commands and supported formats\n"
+        "/jd - Attach or paste the job description first\n"
+        "/resume - Attach or paste the resume after JD\n"
+        "/cancel - Reset the current intake step"
+    )
+
+
+def format_overview() -> str:
+    return (
+        "Accepted formats:\n"
+        f"JD: {SUPPORTED_JD_FORMATS}\n"
+        f"Resume: {SUPPORTED_RESUME_FORMATS}"
+    )
+
+
+def user_status(context: ContextTypes.DEFAULT_TYPE) -> str:
+    jd_ready = "attached" if context.user_data.get("jd_text") else "missing"
+    resume_ready = "attached" if context.user_data.get("resume_text") else "missing"
+    return f"Current status:\nJD: {jd_ready}\nResume: {resume_ready}"
+
 
 # Constants for conversation states
 JD_STATE, RESUME_STATE = range(2)
@@ -32,10 +62,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     logger.info("User %s started the conversation.", user.first_name)
     await update.message.reply_text(
-        "👋 Welcome to the **Free Resume AI Analyzer**!\n\n"
-        "To get started, please paste the **Job Description (JD)** that you want your resume evaluated against."
+        f"{command_overview()}\n\n{format_overview()}\n\n{user_status(context)}"
     )
-    return JD_STATE
 
 
 async def handle_jd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -44,10 +72,10 @@ async def handle_jd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["jd_text"] = jd_text
 
     await update.message.reply_text(
-        "✅ Got the Job Description!\n\n"
-        "Now, please upload your **Resume** document in PDF or DOCX format."
+        "JD is already attached.\n"
+        "Send /resume when you are ready to upload or paste the resume.\n"
+        "You can also ask me general career questions here."
     )
-    return RESUME_STATE
 
 
 async def handle_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

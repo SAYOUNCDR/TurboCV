@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Jane Doe - Compact Resume</title>
+  <style>
+    :root {
+      --bg: #f7f4ed;
+      --ink: #17202a;
+      --muted: #5f6c76;
+      --accent: #1d6b57;
+      --accent-soft: #d6ebe4;
+      --line: #d7ddd8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background:
+        linear-gradient(180deg, rgba(29, 107, 87, 0.08), transparent 22%),
+        var(--bg);
+      color: var(--ink);
+      font-family: Arial, sans-serif;
+    }
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      background: white;
+      border: 1px solid var(--line);
+      padding: 28px;
+    }
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: start;
+      border-bottom: 2px solid var(--accent-soft);
+      padding-bottom: 14px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+    }
+    .headline {
+      margin-top: 6px;
+      color: var(--accent);
+      font-weight: bold;
+    }
+    .contact {
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .scorebox {
+      padding: 12px 14px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 14px;
+      text-align: right;
+      min-width: 160px;
+      font-weight: bold;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 22px;
+      margin-top: 22px;
+    }
+    section {
+      margin-bottom: 18px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.55;
+    }
+    .summary {
+      line-height: 1.7;
+    }
+    @media (max-width: 760px) {
+      .header, .grid { grid-template-columns: 1fr; }
+      .scorebox { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <h1>Jane Doe</h1>
+        <div class="contact">jane@example.com | +91 9876543210 | linkedin.com/in/janedoe</div>
+      </div>
+      <div class="scorebox">
+        Score 4.8 / 10<br>
+        Needs improvement
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <section>
+          <h2>Experience</h2>
+          <ul><li>Software Developer Intern, ABC Tech, 2024</li><li>Worked on internal APIs for reporting systems</li></ul>
+        </section>
+
+        <section>
+          <h2>Achievements</h2>
+          <ul><li>Improved response time by 25 percent</li><li>Reduced manual tracking effort by 30 percent</li></ul>
+        </section>
+
+        
+        <section>
+          <h2>Projects</h2>
+          <ul><li>Inventory tracking web app for manufacturing reports</li><li>Automation dashboard for plant maintenance tickets</li></ul>
+        </section>
+        
+      </div>
+
+      <div>
+        <section>
+          <h2>Skills</h2>
+          <ul><li>Python</li><li>Flask</li><li>SQL</li><li>Git</li><li>Docker</li></ul>
+        </section>
+
+        
+        <section>
+          <h2>Education</h2>
+          <ul><li>B.Tech in Computer Science</li></ul>
+        </section>
+        
+
+        
+        <section>
+          <h2>Certifications</h2>
+          <ul><li>AWS Cloud Practitioner</li></ul>
+        </section>
+        
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

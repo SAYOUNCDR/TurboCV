@@ -1,0 +1,64 @@
+# Devanshi Sharma
+Email: devanshi.sharma@email.com | Phone: +91-XXXXXXXXXX | Location: India | GitHub: github.com/devanshi | LinkedIn: linkedin.com/in/devanshi
+
+## Skills
+- scalable web applications and AI-powered systems. Skilled in integrating AI APIs
+- building
+- agent-based workflows
+- and developing backend services. Quick learner with a strong
+- Languages: Python
+- JavaScript
+- TypeScript
+- Frameworks: React
+- Next.js
+- FastAPI
+- Node.js
+- AI & Tools: ChatGPT
+- Claude
+- OpenAI APIs
+- Prompt Engineering
+- AI-assisted development
+- Core Concepts: Data Structures
+- Algorithms
+- System Design
+- REST APIs
+- Cloud & Tools: AWS
+- Docker
+- Git
+- CI/CD
+- Other: Real-time systems
+- WebSockets
+- Streaming pipelines
+- Python
+- AI & Machine Learning
+
+## Experience
+- Software Engineer | AI Systems
+- Software Engineer with strong programming fundamentals and hands-on experience in building
+- Software Engineer | AI Systems Project
+- Built and deployed AI-powered applications using LLM APIs
+- Designed and implemented agent-based workflows for automation tasks
+- Developed scalable backend services using FastAPI and Node.js
+- Integrated real-time streaming pipelines using WebSockets and FFmpeg
+- Collaborated with cross-functional teams to deliver features efficiently
+- problem-solving mindset and a passion for exploring new technologies.
+
+## Achievements
+- Built and deployed AI-powered applications
+- Designed and implemented agent-based workflows
+
+## Projects
+- AI Interview Bot
+- Developed a real-time AI interview system using STT, LLM, and TTS pipelines
+- Implemented streaming architecture using WebSockets and Pub/Sub
+- Reduced latency by optimizing real-time processing pipeline
+- Automation Agent System
+- Built AI agents capable of automating workflows and decision-making
+- Integrated multiple APIs and tools for task execution
+
+## Education
+- Bachelor of Technology in Computer Science
+- Additional Information
+- Strong ability to learn new technologies quickly
+- Passionate about AI systems and automation
+- Excellent problem-solving and analytical skills
