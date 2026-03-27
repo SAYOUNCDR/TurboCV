@@ -4,7 +4,11 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+
+# Load environment variables first
+load_dotenv()
+
+from telegram import Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -13,25 +17,13 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-
-from utils import (
-    SUPPORTED_JD_FORMATS,
-    SUPPORTED_RESUME_FORMATS,
-    analyze_resume_against_jd,
-    answer_general_query,
-    extract_jd_text,
-    extract_resume_text,
-    generated_output_dir,
-    infer_extension,
-)
-
-load_dotenv()
+import utils
+import json
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
-logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 DOWNLOAD_CALLBACK = "download_improved_resume"
 
@@ -61,177 +53,23 @@ def user_status(context: ContextTypes.DEFAULT_TYPE) -> str:
     return f"Current status:\nJD: {jd_ready}\nResume: {resume_ready}"
 
 
-def set_waiting_state(
-    context: ContextTypes.DEFAULT_TYPE,
-    jd: bool = False,
-    resume: bool = False,
-) -> None:
-    context.user_data["awaiting_jd"] = jd
-    context.user_data["awaiting_resume"] = resume
+# Constants for conversation states
+JD_STATE, RESUME_STATE = range(2)
 
 
-def download_resume_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Download Improved Resume", callback_data=DOWNLOAD_CALLBACK)]]
-    )
-
-
-def looks_like_general_query(message_text: str) -> bool:
-    lowered = message_text.strip().lower()
-    if not lowered:
-        return False
-
-    question_starters = (
-        "what",
-        "which",
-        "who",
-        "where",
-        "when",
-        "why",
-        "how",
-        "can",
-        "could",
-        "should",
-        "would",
-        "do",
-        "does",
-        "is",
-        "are",
-        "am",
-        "will",
-        "suggest",
-        "recommend",
-        "tell me",
-        "help me",
-    )
-    if lowered.endswith("?"):
-        return True
-    if any(lowered.startswith(starter) for starter in question_starters):
-        return len(lowered) <= 400
-    return False
-
-
-async def post_init(application: Application) -> None:
-    await application.bot.set_my_commands(
-        [
-            BotCommand("start", "Show welcome message"),
-            BotCommand("help", "Show commands and supported formats"),
-            BotCommand("jd", "Attach or paste the job description"),
-            BotCommand("resume", "Attach or paste the resume"),
-            BotCommand("download_resume", "Download the last generated improved resume"),
-            BotCommand("cancel", "Cancel the current intake step"),
-        ]
-    )
-
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    set_waiting_state(context)
-    message = (
-        "TurboCV is ready.\n\n"
-        f"{command_overview()}\n\n"
-        f"{format_overview()}\n\n"
-        "Start by sending /jd to attach the job description."
-    )
-    await update.message.reply_text(f"{message}\n\n{user_status(context)}")
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the conversation and asks for the Job Description."""
+    user = update.message.from_user
+    logger.info("User %s started the conversation.", user.first_name)
     await update.message.reply_text(
         f"{command_overview()}\n\n{format_overview()}\n\n{user_status(context)}"
     )
 
 
-async def jd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    set_waiting_state(context, jd=True, resume=False)
-    await update.message.reply_text(
-        "Send the job description now.\n\n"
-        "You can attach it as pasted text or as a screenshot/image file.\n"
-        f"{format_overview()}"
-    )
-
-
-async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.user_data.get("jd_text"):
-        await update.message.reply_text(
-            "You have not attached the JD yet.\n"
-            "Please send /jd first, then attach the job description."
-        )
-        return
-
-    set_waiting_state(context, jd=False, resume=True)
-    await update.message.reply_text(
-        "Send the resume now.\n\n"
-        "You can paste resume text or upload a document.\n"
-        f"{format_overview()}"
-    )
-
-
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    set_waiting_state(context)
-    await update.message.reply_text(
-        "Current intake step canceled.\n"
-        "Use /jd to attach a job description or /resume to continue with the saved JD."
-    )
-
-
-async def download_resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await send_generated_resume_files(update, context)
-
-
-async def download_resume_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    await send_generated_resume_files(update, context, from_callback=True)
-
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message_text = (update.message.text or "").strip()
-    if not message_text:
-        return
-
-    if context.user_data.get("awaiting_jd"):
-        context.user_data["jd_text"] = message_text
-        context.user_data["resume_text"] = None
-        set_waiting_state(context)
-        await update.message.reply_text(
-            "JD saved successfully.\n"
-            "Now send /resume and upload or paste the resume."
-        )
-        return
-
-    if context.user_data.get("awaiting_resume"):
-        await process_resume_text(update, context, message_text, "pasted text")
-        return
-
-    if context.user_data.get("resume_text") or context.user_data.get("last_analysis"):
-        reply = await asyncio.to_thread(
-            answer_general_query,
-            message_text,
-            context.user_data.get("jd_text"),
-            context.user_data.get("resume_text"),
-            context.user_data.get("last_analysis"),
-        )
-        await update.message.reply_text(reply)
-        return
-
-    if looks_like_general_query(message_text):
-        reply = await asyncio.to_thread(
-            answer_general_query,
-            message_text,
-            context.user_data.get("jd_text"),
-            context.user_data.get("resume_text"),
-            context.user_data.get("last_analysis"),
-        )
-        await update.message.reply_text(reply)
-        return
-
-    if not context.user_data.get("jd_text"):
-        await update.message.reply_text(
-            "I need the JD first.\n"
-            "Please use /jd before sending the resume.\n"
-            "You can also ask me general career questions in normal chat."
-        )
-        return
+async def handle_jd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Stores the JD and asks for the Resume."""
+    jd_text = update.message.text
+    context.user_data["jd_text"] = jd_text
 
     await update.message.reply_text(
         "JD is already attached.\n"
@@ -240,243 +78,135 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.user_data.get("awaiting_jd"):
-        if not context.user_data.get("jd_text"):
-            await update.message.reply_text(
-                "You have not attached the JD yet.\n"
-                "Please send /jd first."
-            )
-        else:
-            await update.message.reply_text(
-                "Photo uploads are only supported for JD screenshots.\n"
-                "Use /resume to attach the resume as text or document."
-            )
-        return
-
-    downloads_dir = generated_output_dir("downloads", update.effective_chat.id)
-    file_path = downloads_dir / "jd_screenshot.jpg"
-    telegram_file = await context.bot.get_file(update.message.photo[-1].file_id)
-    await telegram_file.download_to_drive(str(file_path))
-
-    await update.message.reply_text("Please wait while we read the JD screenshot...")
-
-    try:
-        jd_text = await asyncio.to_thread(extract_jd_text, file_path)
-    except Exception as exc:
-        logger.exception("Failed to extract JD from photo")
-        await update.message.reply_text(
-            "I could not read that JD screenshot.\n"
-            "Please try again with clearer text, or paste the JD as text.\n"
-            f"Details: {exc}"
-        )
-        return
-
-    context.user_data["jd_text"] = jd_text
-    context.user_data["resume_text"] = None
-    set_waiting_state(context)
-    await update.message.reply_text(
-        "JD screenshot processed successfully.\n"
-        "Now send /resume and upload or paste the resume."
-    )
-
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Downloads the resume, extracts text, analyzes it, and sends feedback."""
+    user = update.message.from_user
     document = update.message.document
-    file_name = document.file_name or "attachment"
-    file_extension = infer_extension(file_name, document.mime_type)
 
-    if context.user_data.get("awaiting_jd"):
-        await process_jd_document(update, context, file_name, file_extension)
-        return
-
-    if not context.user_data.get("jd_text"):
+    # Check if document exists
+    if not document:
         await update.message.reply_text(
-            "You have not attached the JD yet.\n"
-            "Please send /jd first, then upload the job description."
+            "Please make sure you upload a valid file (PDF/DOCX) using the attachment button."
         )
-        return
+        return RESUME_STATE
 
-    if not context.user_data.get("awaiting_resume"):
+    file_name = document.file_name
+    # Check file extension
+    if not (file_name.lower().endswith(".pdf") or file_name.lower().endswith(".docx")):
         await update.message.reply_text(
-            "JD is already attached.\n"
-            "Send /resume first, then upload the resume."
+            "I only support .pdf and .docx file formats right now. Try uploading a valid document."
         )
-        return
+        return RESUME_STATE
 
-    await process_resume_document(update, context, file_name, file_extension)
+    await update.message.reply_text("Uploading your resume... ⏳")
 
+    # Create downloads directory if it doesn't exist
+    if not os.path.exists("downloads"):
+        os.makedirs("downloads")
 
-async def process_jd_document(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    file_name: str,
-    file_extension: str,
-) -> None:
-    downloads_dir = generated_output_dir("downloads", update.effective_chat.id)
-    target_path = downloads_dir / f"jd_upload{file_extension}"
-    telegram_file = await context.bot.get_file(update.message.document.file_id)
-    await telegram_file.download_to_drive(str(target_path))
+    # Download the file to 'downloads' directory
+    file = await context.bot.get_file(document.file_id)
+    file_path = os.path.join("downloads", f"{user.id}_{file_name}")
+    await file.download_to_drive(file_path)
 
-    await update.message.reply_text("Please wait while we read the job description...")
-
-    try:
-        jd_text = await asyncio.to_thread(extract_jd_text, target_path)
-    except Exception as exc:
-        logger.exception("Failed to extract JD from document")
-        await update.message.reply_text(
-            "I could not process that JD attachment.\n"
-            "Please send the JD as text or as an image screenshot.\n"
-            f"Details: {exc}"
-        )
-        return
-
-    context.user_data["jd_text"] = jd_text
-    context.user_data["resume_text"] = None
-    set_waiting_state(context)
     await update.message.reply_text(
-        f"JD saved from {file_name}.\n"
-        "Now send /resume and upload or paste the resume."
+        "Analyzing your resume... please wait (this calls the AI model). 🤖"
     )
-
-
-async def process_resume_document(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    file_name: str,
-    file_extension: str,
-) -> None:
-    downloads_dir = generated_output_dir("downloads", update.effective_chat.id)
-    target_path = downloads_dir / f"resume_upload{file_extension}"
-    telegram_file = await context.bot.get_file(update.message.document.file_id)
-    await telegram_file.download_to_drive(str(target_path))
 
     try:
-        resume_text = await asyncio.to_thread(extract_resume_text, target_path)
-    except Exception as exc:
-        logger.exception("Failed to extract resume from document")
+        # Extract text from resume
+        resume_text = utils.extract_text(file_path)
+        if not resume_text:
+            await update.message.reply_text(
+                "Could not extract text from the file. Please ensure it's a valid PDF or DOCX."
+            )
+            return ConversationHandler.END
+
+        # Analyze using Gemini
+        jd_text = context.user_data.get("jd_text")
+        if not jd_text:
+            await update.message.reply_text(
+                "Job Description missing. Please start over with /start."
+            )
+            return ConversationHandler.END
+
+        analysis = utils.analyze_resume(resume_text, jd_text)
+
+        # Check if analysis failed inside utils (it returns a dict with error message)
+        if (
+            "summary_feedback" in analysis
+            and "Error analyzing" in analysis["summary_feedback"]
+        ):
+            # If specific error is returned
+            error_msg = analysis["summary_feedback"]
+            logger.error(f"Analysis Error: {error_msg}")
+            await update.message.reply_text(
+                f"An error occurred during AI analysis:\n{error_msg}"
+            )
+            return ConversationHandler.END
+
+        score = analysis.get("score", 0)
+        summary = analysis.get("summary_feedback", "No summary available.")
+        missing_keywords = analysis.get("missing_keywords", [])
+        improvement_tips = analysis.get("improvement_tips", [])
+
+        feedback = (
+            f"*Resume Score:* {score}/100\n\n"
+            f"*Summary:*\n{summary}\n\n"
+            f"*Missing Keywords:*\n- " + "\n- ".join(missing_keywords) + "\n\n"
+            f"*Improvement Tips:*\n- " + "\n- ".join(improvement_tips)
+        )
+
+        await update.message.reply_text(feedback, parse_mode="Markdown")
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        logger.error("Error during analysis: %s", e)
         await update.message.reply_text(
-            "I could not process that resume file.\n"
-            "Please upload a readable resume in PDF, DOCX, TXT, MD, or paste it as text.\n"
-            f"Details: {exc}"
+            f"Sorry, something went wrong while analyzing your resume.\nError details: {str(e)}"
         )
-        return
+    finally:
+        # Clean up the downloaded file
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-    await process_resume_text(update, context, resume_text, file_name)
-
-
-async def process_resume_text(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    resume_text: str,
-    source_label: str,
-) -> None:
-    jd_text = context.user_data.get("jd_text")
-    if not jd_text:
-        await update.message.reply_text(
-            "You have not attached the JD yet.\n"
-            "Please send /jd first."
-        )
-        return
-
-    context.user_data["resume_text"] = resume_text
-    set_waiting_state(context)
-
-    await update.message.reply_text("Please wait while we are processing your JD and resume...")
-
-    try:
-        analysis = await asyncio.to_thread(
-            analyze_resume_against_jd,
-            jd_text,
-            resume_text,
-            update.effective_chat.id,
-        )
-    except Exception as exc:
-        logger.exception("Resume analysis failed")
-        await update.message.reply_text(
-            "Something went wrong while analyzing the resume.\n"
-            f"Details: {exc}"
-        )
-        return
-
-    context.user_data["last_analysis"] = analysis
-    context.user_data["last_generated_files"] = analysis["generated_files"]
-
-    matched = ", ".join(analysis["matched_keywords"][:8]) or "No strong keyword overlap detected yet"
-    missing = ", ".join(analysis["missing_keywords"][:8]) or "No critical gaps detected"
-    suggestions = "\n".join(f"- {item}" for item in analysis["suggestions"])
-    detailed_analysis = analysis.get("detailed_analysis") or analysis["summary"]
-    recommended_roles = ", ".join(analysis.get("recommended_roles", [])) or "No strong role recommendation available yet"
-    apply_targets = ", ".join(analysis.get("apply_targets", [])) or "No specific application channels available yet"
-
-    result_message = (
-        f"Processing complete for {source_label}.\n\n"
-        f"Score: {analysis['score']} / 10\n"
-        f"Alignment: {analysis['alignment_label']}\n"
-        f"Quick summary: {analysis['summary']}\n\n"
-        f"Detailed analysis:\n{detailed_analysis}\n\n"
-        f"Matched keywords: {matched}\n"
-        f"Missing or weak keywords: {missing}\n\n"
-        f"Roles you are most fit for right now: {recommended_roles}\n"
-        f"Best places to apply: {apply_targets}"
-    )
-
-    if analysis["score"] < 8 or analysis["suggestions"]:
-        result_message += f"\n\nSuggestions to improve:\n{suggestions}"
-
-    result_message += (
-        "\n\nYour improved resume is ready."
-        "\nUse the button below or /download_resume to get the generated files."
-    )
-    await update.message.reply_text(result_message, reply_markup=download_resume_keyboard())
+    await update.message.reply_text("Send /start to analyze another resume.")
+    return ConversationHandler.END
 
 
-async def send_generated_resume_files(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    from_callback: bool = False,
-) -> None:
-    generated_files = context.user_data.get("last_generated_files") or []
-    if not generated_files:
-        message = "No generated resume is available yet. Please analyze a resume first."
-        if from_callback:
-            await update.callback_query.message.reply_text(message)
-        else:
-            await update.message.reply_text(message)
-        return
-
-    target_message = update.callback_query.message if from_callback else update.message
-    await target_message.reply_text(
-        "Downloading your improved resume files now.\n"
-        "Please review the content before using it in applications."
-    )
-
-    for file_path in generated_files:
-        with Path(file_path).open("rb") as handle:
-            await target_message.reply_document(document=handle, filename=Path(file_path).name)
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels and ends the conversation."""
+    await update.message.reply_text("Operation cancelled. Send /start to try again.")
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 def main() -> None:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    """Run the bot."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        logger.error("No TELEGRAM_BOT_TOKEN provided. Please check your .env file.")
-        print("CRITICAL: Add TELEGRAM_BOT_TOKEN to your .env file.")
+        logger.error("TELEGRAM_BOT_TOKEN not found in environment variables.")
         return
 
-    application = Application.builder().token(token).post_init(post_init).build()
+    application = Application.builder().token(token).build()
 
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("jd", jd_command))
-    application.add_handler(CommandHandler("resume", resume_command))
-    application.add_handler(CommandHandler("download_resume", download_resume_command))
-    application.add_handler(CommandHandler("cancel", cancel_command))
-    application.add_handler(CallbackQueryHandler(download_resume_callback, pattern=f"^{DOWNLOAD_CALLBACK}$"))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            JD_STATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_jd)],
+            RESUME_STATE: [MessageHandler(filters.Document.ALL, handle_resume)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
 
-    logger.info("Bot is polling and ready for messages...")
+    application.add_handler(conv_handler)
+
+    # Check if a custom log level for httpx is needed to reduce noise
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
